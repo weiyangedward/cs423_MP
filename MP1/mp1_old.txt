@@ -1,0 +1,196 @@
+#define LINUX
+
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/slab.h>
+#include <linux/fs.h> 
+#include <linux/init.h> 
+#include <linux/proc_fs.h> 
+#include <linux/seq_file.h> 
+#include <linux/utsname.h>
+#include <linux/uaccess.h>
+#include <linux/types.h>
+#include "mp1_given.h"
+
+#define FILENAME "status"
+#define DIRECTORY "mp1"
+#define DEBUG 1
+#define PROCFS_MAX_SIZE 1024
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Group_14");
+MODULE_DESCRIPTION("CS-423 MP1");
+
+
+struct KernelList
+{
+   struct list_head next;
+   int data;
+};
+
+LIST_HEAD(myList);
+
+
+static struct proc_dir_entry *mp1;
+static struct proc_dir_entry *status;
+// kernel buffer to hold message from user process
+static char kernel_buf[PROCFS_MAX_SIZE]; 
+
+
+static int cpu_proc_show(struct seq_file *sf, void *v)
+{
+    struct KernelList *cur;
+    unsigned long cpu_use;
+    
+    list_for_each_entry(cur, &myList, next)
+    {
+        get_cpu_use(cur->data, &cpu_use);
+        seq_printf(sf, "%d: %lu\n", cur->data, cpu_use);
+    }
+    
+  // seq_printf(sf, "%llu\n", (unsigned long long) get_jiffies_64());
+
+    return 0;
+}
+
+/*===========================================
+add the functions mp1_read and mp1_write which will give write data 
+to the proc entry and then read data from the proc entry
+*/
+/*====================
+read from kernel proc
+*/
+static ssize_t kernel_proc_read (
+   struct file* file, 
+   char __user* user_buffer, 
+   size_t count, 
+   loff_t* data)
+{
+   /*
+   Once data is written to the proc entry we can read from the proc 
+   entry using a read function, i.e tranfer data to the user space 
+   using the function copy_to_user function
+   */
+
+   /*============ 
+   (to, from, n)
+    -> (a pointer to a user space buffer, a pointer to a kernel buffer, 
+    and a length defined in bytes)
+    */
+   copy_to_user(user_buffer, kernel_buf, count); 
+   printk(KERN_ALERT "\nreading procfs\n");
+   return count ;
+}
+
+/*==================
+write to kernel proc
+*/
+static ssize_t kernel_proc_write (
+   struct file* file, 
+   const char __user* user_buffer, 
+   size_t count, 
+   loff_t* data)
+{ 
+
+   /*
+   write function will recieve data from the user space using 
+   the function copy_from_user
+   */
+   int pid;
+   struct KernelList* new_list_node = 
+   (struct KernelList*)kmalloc(sizeof(struct KernelList), GFP_KERNEL);
+   /*===========
+   (to, from, n)
+   */
+   if (copy_from_user(kernel_buf, user_buffer, count))
+   {
+      return -EFAULT;
+   }
+
+   kstrtoint(kernel_buf, 0, &pid);
+   new_list_node->data = pid;
+   INIT_LIST_HEAD(&new_list_node->next);
+
+   list_add(&new_list_node->next, &myList);
+
+   printk(KERN_ALERT "\nwriting procfs\n");
+   return count;
+}
+
+static int cpu_proc_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, cpu_proc_show, NULL);
+}
+
+/*================================
+create file_operations structure mp1_file in which we can map the 
+read and write functions for the proc entry.
+
+The file_operations structure is defined in linux/fs.h, and holds 
+pointers to functions defined by the driver that perform various 
+operations on the device. Each field of the structure corresponds to 
+the address of some function defined by the driver to handle a requested 
+operation
+*/
+static const struct file_operations kernel_proc_fops = {
+   .owner = THIS_MODULE,
+   .open = cpu_proc_open,
+   .read = kernel_proc_read,
+   .write = kernel_proc_write,
+};
+
+
+
+
+/*==================================== 
+mp1_init - Called when module is loaded, must have in a kernel module
+*/
+int __init mp1_init(void)
+{
+   #ifdef DEBUG
+   printk(KERN_ALERT "\nMP1 MODULE LOADING\n");
+   #endif
+   
+
+   // kernel_buf = kmalloc(GFP_KERNEL, 10*sizeof(char));
+   
+   /*================
+   create a proc entry
+   */
+   mp1 = proc_mkdir(DIRECTORY, NULL);
+   status = proc_create(FILENAME, 0666, mp1, &kernel_proc_fops);
+   
+   printk(KERN_ALERT "\nMP1 MODULE LOADED\n");
+   return 0;   
+}
+
+/*======================================
+mp1_exit - Called when module is unloaded, must have in a kernel module
+*/
+void __exit mp1_exit(void)
+{
+   #ifdef DEBUG
+   printk(KERN_ALERT "\nMP1 MODULE UNLOADING\n");
+   #endif
+   
+   struct KernelList *cur, *temp;
+   // (pos, n, head, member)
+   list_for_each_entry_safe(cur, temp, &myList, next)
+   {
+      list_del(&cur->next);
+      kfree(&cur);
+   }
+
+   
+   // remove created proc entry
+   remove_proc_entry("status", mp1);
+   remove_proc_entry("mp1", NULL);
+   printk(KERN_ALERT "\nMP1 MODULE UNLOADED\n");
+}
+
+/*=========================== 
+Register init and exit funtions
+*/
+MODULE_LICENSE("GPL"); 
+module_init(mp1_init);
+module_exit(mp1_exit);

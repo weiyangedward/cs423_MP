@@ -1,0 +1,23 @@
+#======= compile module:
+weiyang@sp16-cs423-g14:~/MP/MP1$ make
+rm -f userapp *~ *.ko *.o *.mod.c Module.symvers modules.order
+make -C /lib/modules/3.19.0-25-generic/build M=/home/weiyang/MP/MP1 modules
+make[1]: Entering directory `/usr/src/linux-headers-3.19.0-25-generic'
+  CC [M]  /home/weiyang/MP/MP1/mp1.o
+  Building modules, stage 2.
+  MODPOST 1 modules
+  CC      /home/weiyang/MP/MP1/mp1.mod.o
+  LD [M]  /home/weiyang/MP/MP1/mp1.ko
+make[1]: Leaving directory `/usr/src/linux-headers-3.19.0-25-generic'
+gcc -o userapp userapp.c
+
+##====== un-install module:
+weiyang@sp16-cs423-g14:~/MP/MP1$ sudo rmmod mp1.ko
+[sudo] password for weiyang:
+
+##====== install module:
+[sudo] password for weiyang:weiyang@sp16-cs423-g14:~/MP/MP1$ sudo insmod mp1.ko
+[sudo] password for weiyang:
+
+##====== module load info:
+weiyang@sp16-cs423-g14:~/MP/MP1$ dmesg | tail -4
